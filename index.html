@@ -720,15 +720,25 @@
         <div class="panel-body">
           <div class="control-row">
             <span class="control-label">환경광</span>
-            <span class="control-value" id="ambVal">0.6</span>
+            <span class="control-value" id="ambVal">0.60</span>
           </div>
           <input type="range" id="ambientIntensity" min="0" max="2" value="0.6" step="0.05" oninput="updateLighting()">
           <div class="control-row">
             <span class="control-label">방향광</span>
-            <span class="control-value" id="dirLightVal">1.0</span>
+            <span class="control-value" id="dirLightVal">1.50</span>
           </div>
-          <input type="range" id="dirIntensity" min="0" max="3" value="1.0" step="0.05" oninput="updateLighting()">
-          <div class="toggle-row">
+          <input type="range" id="dirIntensity" min="0" max="4" value="1.5" step="0.05" oninput="updateLighting()">
+          <div class="control-row">
+            <span class="control-label">환경맵 (PBR반사)</span>
+            <span class="control-value" id="envVal">1.00</span>
+          </div>
+          <input type="range" id="envIntensity" min="0" max="3" value="1.0" step="0.05" oninput="updateLighting()">
+          <div class="control-row">
+            <span class="control-label">노출 (Exposure)</span>
+            <span class="control-value" id="expVal">1.20</span>
+          </div>
+          <input type="range" id="exposureVal" min="0.2" max="3" value="1.2" step="0.05" oninput="updateLighting()">
+          <div class="toggle-row" style="margin-top:4px">
             <span class="control-label">그림자</span>
             <div class="toggle" id="shadowToggle" onclick="toggleShadow()"></div>
           </div>
@@ -803,6 +813,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ═══════════════════════════════════════════════════
 // Three.js Setup
@@ -818,26 +829,84 @@ renderer.setSize(viewport.clientWidth, viewport.clientHeight);
 renderer.shadowMap.enabled = false;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.2;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 viewport.insertBefore(renderer.domElement, viewport.firstChild);
 
+// ── Environment Map for PBR materials ──
+// This is critical: without an environment map, metallic/roughness materials appear black
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+const envScene = new RoomEnvironment();
+const envMap = pmremGenerator.fromScene(envScene, 0.04).texture;
+scene.environment = envMap;  // PBR materials will use this for reflections
+envScene.dispose();
+// Don't set scene.background = envMap so transparent BG still works
+
+// ── OrbitControls with Mac pointer fix ──
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
+controls.enablePan = true;
+controls.enableZoom = true;
+// Fix for Mac tablet pen / trackpad: set touch behavior
+controls.touches = {
+  ONE: THREE.TOUCH.ROTATE,
+  TWO: THREE.TOUCH.DOLLY_PAN
+};
+
+// ── Mac Pointer Event Fix ──
+// On Mac, stylus/tablet pen pointer events can get "stuck" because
+// pointerup fires outside the canvas. Force release on pointerleave/pointercancel.
+const canvas = renderer.domElement;
+canvas.style.touchAction = 'none'; // prevent browser gestures
+
+// Force pointer release when pointer leaves canvas or is cancelled
+canvas.addEventListener('pointerleave', (e) => {
+  // Simulate pointerup to release OrbitControls
+  canvas.dispatchEvent(new PointerEvent('pointerup', {
+    pointerId: e.pointerId,
+    pointerType: e.pointerType,
+    clientX: e.clientX,
+    clientY: e.clientY,
+    bubbles: true
+  }));
+});
+
+canvas.addEventListener('pointercancel', (e) => {
+  canvas.dispatchEvent(new PointerEvent('pointerup', {
+    pointerId: e.pointerId,
+    pointerType: e.pointerType,
+    clientX: e.clientX,
+    clientY: e.clientY,
+    bubbles: true
+  }));
+});
+
+// Also handle the case where pointer capture gets stuck
+canvas.addEventListener('lostpointercapture', (e) => {
+  // nothing needed, but prevents default
+});
+
+// Prevent context menu on right-click (interferes with pan)
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
 dirLight.position.set(5, 10, 7);
 scene.add(dirLight);
-const fillLight = new THREE.DirectionalLight(0xaaccff, 0.3);
-fillLight.position.set(-3, 2, -5);
+const fillLight = new THREE.DirectionalLight(0xaaccff, 0.5);
+fillLight.position.set(-5, 3, -5);
 scene.add(fillLight);
-const rimLight = new THREE.DirectionalLight(0xffeedd, 0.4);
-rimLight.position.set(0, -2, -6);
+const rimLight = new THREE.DirectionalLight(0xffeedd, 0.5);
+rimLight.position.set(0, -2, -8);
 scene.add(rimLight);
+// Extra top light for better coverage
+const topLight = new THREE.DirectionalLight(0xffffff, 0.3);
+topLight.position.set(0, 10, 0);
+scene.add(topLight);
 
 const groundGeo = new THREE.PlaneGeometry(50, 50);
 const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 });
@@ -1194,11 +1263,41 @@ window.selectModel = async function(uid, el) {
     setLoadingText('리소스 파일 처리중...');
     setProgress(75);
 
-    // Create blob URLs for all files
+    // Helper: get proper MIME type for blob creation
+    function getMimeType(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const mimes = {
+        'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+        'webp': 'image/webp', 'gif': 'image/gif', 'bmp': 'image/bmp',
+        'gltf': 'model/gltf+json', 'glb': 'model/gltf-binary',
+        'bin': 'application/octet-stream',
+        'json': 'application/json',
+        'ktx2': 'image/ktx2', 'basis': 'application/octet-stream',
+        'tga': 'image/x-tga', 'dds': 'image/vnd-ms.dds',
+        'hdr': 'application/octet-stream', 'exr': 'application/octet-stream',
+      };
+      return mimes[ext] || 'application/octet-stream';
+    }
+
+    // Create blob URLs for all files with correct MIME types
     const blobUrls = {};
+    // Also build a filename-only lookup for faster matching
+    const filenameLookup = {};
+
     for (const entry of entries) {
+      const mime = getMimeType(entry.name);
       const data = await entry.async('blob');
-      blobUrls[entry.name] = URL.createObjectURL(data);
+      const typedBlob = new Blob([data], { type: mime });
+      const blobUrl = URL.createObjectURL(typedBlob);
+      blobUrls[entry.name] = blobUrl;
+
+      // Store by filename only (last segment) for fallback matching
+      const basename = entry.name.split('/').pop();
+      if (basename) {
+        filenameLookup[basename] = blobUrl;
+        // Also store lowercase version
+        filenameLookup[basename.toLowerCase()] = blobUrl;
+      }
     }
 
     // Step 4: Load into Three.js
@@ -1207,31 +1306,41 @@ window.selectModel = async function(uid, el) {
 
     const fileUrl = blobUrls[entryFile.name];
 
-    // Custom loading manager to resolve paths
+    // Custom loading manager with robust path resolution
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((url) => {
-      // Try to resolve relative paths in the ZIP
       const decoded = decodeURIComponent(url);
-      // Check exact match first
+
+      // 1. Exact match
       if (blobUrls[decoded]) return blobUrls[decoded];
 
-      // Try with filename only
-      const filename = decoded.split('/').pop();
-      for (const [key, val] of Object.entries(blobUrls)) {
-        if (key.endsWith(filename)) return val;
-      }
+      // 2. Filename-only match
+      const filename = decoded.split('/').pop().split('?')[0]; // strip query params too
+      if (filenameLookup[filename]) return filenameLookup[filename];
+      if (filenameLookup[filename.toLowerCase()]) return filenameLookup[filename.toLowerCase()];
 
-      // Try parsing as URL and extracting path
+      // 3. Try stripping leading ./ or /
+      const stripped = decoded.replace(/^\.\//, '').replace(/^\//, '');
+      if (blobUrls[stripped]) return blobUrls[stripped];
+
+      // 4. Try with 'textures/' prefix (common Sketchfab pattern)
+      if (blobUrls['textures/' + filename]) return blobUrls['textures/' + filename];
+
+      // 5. Try URL parsing
       try {
         const parsedUrl = new URL(decoded);
         const path = parsedUrl.pathname.substring(1);
         if (blobUrls[path]) return blobUrls[path];
         const pFilename = path.split('/').pop();
-        for (const [key, val] of Object.entries(blobUrls)) {
-          if (key.endsWith(pFilename)) return val;
-        }
+        if (filenameLookup[pFilename]) return filenameLookup[pFilename];
       } catch(e) {}
 
+      // 6. Fuzzy: find any entry whose name ends with the filename
+      for (const [key, val] of Object.entries(blobUrls)) {
+        if (key.endsWith('/' + filename) || key === filename) return val;
+      }
+
+      console.warn('[URLModifier] Could not resolve:', decoded);
       return url;
     });
 
@@ -1243,12 +1352,49 @@ window.selectModel = async function(uid, el) {
     loader.load(fileUrl, (gltf) => {
       clearModel();
       currentModel = gltf.scene;
+
+      // Fix materials for proper rendering
       currentModel.traverse(child => {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
+
+          // Process materials (handle arrays)
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach(mat => {
+            if (!mat) return;
+
+            // Ensure textures have correct colorSpace
+            if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+            if (mat.emissiveMap) mat.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+            // Normal, roughness, metalness, AO maps should be Linear
+            if (mat.normalMap) mat.normalMap.colorSpace = THREE.LinearSRGBColorSpace;
+            if (mat.roughnessMap) mat.roughnessMap.colorSpace = THREE.LinearSRGBColorSpace;
+            if (mat.metalnessMap) mat.metalnessMap.colorSpace = THREE.LinearSRGBColorSpace;
+            if (mat.aoMap) mat.aoMap.colorSpace = THREE.LinearSRGBColorSpace;
+
+            // Fix common Sketchfab model issues:
+            // 1. Ensure environment map is applied for PBR
+            if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+              mat.envMap = envMap;
+              mat.envMapIntensity = 1.0;
+              mat.needsUpdate = true;
+            }
+
+            // 2. Fix transparent/glass materials
+            if (mat.transparent && mat.opacity < 0.99) {
+              mat.depthWrite = false;
+              mat.side = THREE.DoubleSide;
+            }
+
+            // 3. Handle alpha test for cutout textures (foliage etc)
+            if (mat.alphaTest > 0) {
+              mat.side = THREE.DoubleSide;
+            }
+          });
         }
       });
+
       scene.add(currentModel);
       centerAndScaleModel(currentModel);
       hideLoading();
@@ -1515,10 +1661,31 @@ window.setBgColor = function(el, color) {
 window.updateLighting = function() {
   const amb = parseFloat(document.getElementById('ambientIntensity').value);
   const dir = parseFloat(document.getElementById('dirIntensity').value);
+  const env = parseFloat(document.getElementById('envIntensity').value);
+  const exp = parseFloat(document.getElementById('exposureVal').value);
+
   ambientLight.intensity = amb;
   dirLight.intensity = dir;
+  renderer.toneMappingExposure = exp;
+
+  // Update environment map intensity on all materials
+  if (currentModel) {
+    currentModel.traverse(child => {
+      if (child.isMesh) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(mat => {
+          if (mat && (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial)) {
+            mat.envMapIntensity = env;
+          }
+        });
+      }
+    });
+  }
+
   document.getElementById('ambVal').textContent = amb.toFixed(2);
   document.getElementById('dirLightVal').textContent = dir.toFixed(2);
+  document.getElementById('envVal').textContent = env.toFixed(2);
+  document.getElementById('expVal').textContent = exp.toFixed(2);
 };
 
 window.toggleShadow = function() {
