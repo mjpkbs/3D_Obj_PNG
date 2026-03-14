@@ -813,7 +813,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ═══════════════════════════════════════════════════
 // Three.js Setup
@@ -833,14 +832,72 @@ renderer.toneMappingExposure = 1.2;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 viewport.insertBefore(renderer.domElement, viewport.firstChild);
 
-// ── Environment Map for PBR materials ──
-// This is critical: without an environment map, metallic/roughness materials appear black
+// ── Smooth Studio Environment Map ──
+// RoomEnvironment creates harsh rectangular reflections that look like bumps
+// on smooth surfaces (airplane wings, car hoods). Instead, we build a soft
+// gradient environment that mimics a professional photo studio.
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 pmremGenerator.compileEquirectangularShader();
-const envScene = new RoomEnvironment();
-const envMap = pmremGenerator.fromScene(envScene, 0.04).texture;
-scene.environment = envMap;  // PBR materials will use this for reflections
-envScene.dispose();
+
+function createSoftStudioEnv() {
+  const envScene = new THREE.Scene();
+
+  // Large soft-white hemisphere dome (top light)
+  const topGeo = new THREE.SphereGeometry(20, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
+  const topMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    side: THREE.BackSide
+  });
+  const topDome = new THREE.Mesh(topGeo, topMat);
+  envScene.add(topDome);
+
+  // Darker bottom hemisphere (ground bounce)
+  const botGeo = new THREE.SphereGeometry(20, 64, 32, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+  const botMat = new THREE.MeshBasicMaterial({
+    color: 0x444450,
+    side: THREE.BackSide
+  });
+  const botDome = new THREE.Mesh(botGeo, botMat);
+  envScene.add(botDome);
+
+  // Soft gradient ring at horizon
+  const ringGeo = new THREE.TorusGeometry(19.5, 1.5, 16, 64);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xb0b0b8 });
+  ringGeo.rotateX(Math.PI / 2);
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  envScene.add(ring);
+
+  // Key light (bright area top-front-right)
+  const keyGeo = new THREE.PlaneGeometry(10, 8);
+  const keyMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const keyLight = new THREE.Mesh(keyGeo, keyMat);
+  keyLight.position.set(8, 12, 8);
+  keyLight.lookAt(0, 0, 0);
+  envScene.add(keyLight);
+
+  // Fill light (dimmer, top-left)
+  const fillGeo = new THREE.PlaneGeometry(12, 10);
+  const fillMat = new THREE.MeshBasicMaterial({ color: 0xc0c8d8 });
+  const fillPlane = new THREE.Mesh(fillGeo, fillMat);
+  fillPlane.position.set(-10, 8, -4);
+  fillPlane.lookAt(0, 0, 0);
+  envScene.add(fillPlane);
+
+  // Rim / back light (subtle warm)
+  const rimGeo = new THREE.PlaneGeometry(8, 6);
+  const rimMat = new THREE.MeshBasicMaterial({ color: 0xffe8d0 });
+  const rimPlane = new THREE.Mesh(rimGeo, rimMat);
+  rimPlane.position.set(0, 6, -14);
+  rimPlane.lookAt(0, 0, 0);
+  envScene.add(rimPlane);
+
+  return envScene;
+}
+
+const studioScene = createSoftStudioEnv();
+const envMap = pmremGenerator.fromScene(studioScene, 0.04).texture;
+scene.environment = envMap;
+studioScene.traverse(child => { if (child.geometry) child.geometry.dispose(); if (child.material) child.material.dispose(); });
 // Don't set scene.background = envMap so transparent BG still works
 
 // ── OrbitControls with Mac pointer fix ──
