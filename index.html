@@ -823,7 +823,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 1000);
 camera.position.set(3, 3, 5);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(viewport.clientWidth, viewport.clientHeight);
 renderer.shadowMap.enabled = false;
@@ -1771,19 +1771,41 @@ window.toggleGrid = function() {
 };
 
 // ═══════════════════════════════════════════════════
-// Export
+// Export - Uses separate offscreen renderer to avoid
+// viewport corruption from preserveDrawingBuffer
 // ═══════════════════════════════════════════════════
 function captureAtSize(w, h) {
-  const prevW = renderer.domElement.width;
-  const prevH = renderer.domElement.height;
-  renderer.setSize(w, h);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.render(scene, camera);
-  const dataURL = renderer.domElement.toDataURL('image/png');
-  renderer.setSize(viewport.clientWidth, viewport.clientHeight);
-  camera.aspect = viewport.clientWidth / viewport.clientHeight;
-  camera.updateProjectionMatrix();
+  // Create a dedicated offscreen renderer for capture
+  // This avoids needing preserveDrawingBuffer on the viewport renderer,
+  // which causes high-poly model corruption on many GPUs
+  const captureRenderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true  // needed for toDataURL, but only on this temp renderer
+  });
+  captureRenderer.setPixelRatio(1); // exact pixel dimensions, no scaling
+  captureRenderer.setSize(w, h);
+  captureRenderer.toneMapping = renderer.toneMapping;
+  captureRenderer.toneMappingExposure = renderer.toneMappingExposure;
+  captureRenderer.outputColorSpace = renderer.outputColorSpace;
+  captureRenderer.shadowMap.enabled = renderer.shadowMap.enabled;
+  captureRenderer.shadowMap.type = renderer.shadowMap.type;
+
+  // Clone camera to avoid modifying the viewport camera
+  const captureCamera = camera.clone();
+  captureCamera.aspect = w / h;
+  captureCamera.updateProjectionMatrix();
+
+  // Render the scene
+  captureRenderer.render(scene, captureCamera);
+
+  // Capture
+  const dataURL = captureRenderer.domElement.toDataURL('image/png');
+
+  // Cleanup
+  captureRenderer.dispose();
+  captureRenderer.forceContextLoss();
+
   return dataURL;
 }
 
