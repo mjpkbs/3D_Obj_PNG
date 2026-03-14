@@ -1247,7 +1247,6 @@ window.selectModel = async function(uid, el) {
     setLoadingText('ZIP 압축 해제중...');
     setProgress(65);
     const zip = await JSZip.loadAsync(arrayBuffer);
-    const files = {};
 
     const entries = Object.values(zip.files).filter(f => !f.dir);
     let entryFile = entries.find(f => f.name.endsWith('.gltf'));
@@ -1263,154 +1262,123 @@ window.selectModel = async function(uid, el) {
     setLoadingText('리소스 파일 처리중...');
     setProgress(75);
 
-    // Helper: get proper MIME type for blob creation
+    // Helper: get proper MIME type
     function getMimeType(filename) {
       const ext = filename.split('.').pop().toLowerCase();
       const mimes = {
         'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
         'webp': 'image/webp', 'gif': 'image/gif', 'bmp': 'image/bmp',
-        'gltf': 'model/gltf+json', 'glb': 'model/gltf-binary',
         'bin': 'application/octet-stream',
-        'json': 'application/json',
         'ktx2': 'image/ktx2', 'basis': 'application/octet-stream',
-        'tga': 'image/x-tga', 'dds': 'image/vnd-ms.dds',
-        'hdr': 'application/octet-stream', 'exr': 'application/octet-stream',
       };
       return mimes[ext] || 'application/octet-stream';
     }
 
-    // Create blob URLs for all files with correct MIME types
-    const blobUrls = {};
-    // Also build a filename-only lookup for faster matching
-    const filenameLookup = {};
+    // ── GLB: straightforward parse ──
+    if (isGLB) {
+      setLoadingText('GLB 모델 로딩중...');
+      setProgress(85);
+      const glbBuffer = await entryFile.async('arraybuffer');
+      loadGLTFFromBuffer(glbBuffer, '', uid);
 
-    for (const entry of entries) {
-      const mime = getMimeType(entry.name);
-      const data = await entry.async('blob');
-      const typedBlob = new Blob([data], { type: mime });
-      const blobUrl = URL.createObjectURL(typedBlob);
-      blobUrls[entry.name] = blobUrl;
+    } else {
+      // ── glTF: rewrite URIs inside JSON to blob URLs ──
+      // This is the key fix: instead of relying on URL resolution (which breaks
+      // with blob URLs), we directly patch the glTF JSON to point to blob URLs.
 
-      // Store by filename only (last segment) for fallback matching
-      const basename = entry.name.split('/').pop();
-      if (basename) {
-        filenameLookup[basename] = blobUrl;
-        // Also store lowercase version
-        filenameLookup[basename.toLowerCase()] = blobUrl;
-      }
-    }
+      // 1) Build blob URLs for every non-gltf file in the ZIP
+      const blobUrlMap = {}; // original path → blob URL
 
-    // Step 4: Load into Three.js
-    setLoadingText('3D 모델 렌더링중...');
-    setProgress(90);
+      // Determine the base directory of the gltf file
+      const gltfDir = entryFile.name.includes('/')
+        ? entryFile.name.substring(0, entryFile.name.lastIndexOf('/') + 1)
+        : '';
 
-    const fileUrl = blobUrls[entryFile.name];
+      for (const entry of entries) {
+        if (entry.name === entryFile.name) continue; // skip gltf itself
+        const mime = getMimeType(entry.name);
+        const rawData = await entry.async('blob');
+        const typedBlob = new Blob([rawData], { type: mime });
+        const blobUrl = URL.createObjectURL(typedBlob);
 
-    // Custom loading manager with robust path resolution
-    const manager = new THREE.LoadingManager();
-    manager.setURLModifier((url) => {
-      const decoded = decodeURIComponent(url);
+        // Store with multiple possible keys for matching
+        blobUrlMap[entry.name] = blobUrl;
 
-      // 1. Exact match
-      if (blobUrls[decoded]) return blobUrls[decoded];
-
-      // 2. Filename-only match
-      const filename = decoded.split('/').pop().split('?')[0]; // strip query params too
-      if (filenameLookup[filename]) return filenameLookup[filename];
-      if (filenameLookup[filename.toLowerCase()]) return filenameLookup[filename.toLowerCase()];
-
-      // 3. Try stripping leading ./ or /
-      const stripped = decoded.replace(/^\.\//, '').replace(/^\//, '');
-      if (blobUrls[stripped]) return blobUrls[stripped];
-
-      // 4. Try with 'textures/' prefix (common Sketchfab pattern)
-      if (blobUrls['textures/' + filename]) return blobUrls['textures/' + filename];
-
-      // 5. Try URL parsing
-      try {
-        const parsedUrl = new URL(decoded);
-        const path = parsedUrl.pathname.substring(1);
-        if (blobUrls[path]) return blobUrls[path];
-        const pFilename = path.split('/').pop();
-        if (filenameLookup[pFilename]) return filenameLookup[pFilename];
-      } catch(e) {}
-
-      // 6. Fuzzy: find any entry whose name ends with the filename
-      for (const [key, val] of Object.entries(blobUrls)) {
-        if (key.endsWith('/' + filename) || key === filename) return val;
-      }
-
-      console.warn('[URLModifier] Could not resolve:', decoded);
-      return url;
-    });
-
-    const loader = new GLTFLoader(manager);
-    const dLoader = new DRACOLoader();
-    dLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/libs/draco/');
-    loader.setDRACOLoader(dLoader);
-
-    loader.load(fileUrl, (gltf) => {
-      clearModel();
-      currentModel = gltf.scene;
-
-      // Fix materials for proper rendering
-      currentModel.traverse(child => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-
-          // Process materials (handle arrays)
-          const materials = Array.isArray(child.material) ? child.material : [child.material];
-          materials.forEach(mat => {
-            if (!mat) return;
-
-            // Ensure textures have correct colorSpace
-            if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
-            if (mat.emissiveMap) mat.emissiveMap.colorSpace = THREE.SRGBColorSpace;
-            // Normal, roughness, metalness, AO maps should be Linear
-            if (mat.normalMap) mat.normalMap.colorSpace = THREE.LinearSRGBColorSpace;
-            if (mat.roughnessMap) mat.roughnessMap.colorSpace = THREE.LinearSRGBColorSpace;
-            if (mat.metalnessMap) mat.metalnessMap.colorSpace = THREE.LinearSRGBColorSpace;
-            if (mat.aoMap) mat.aoMap.colorSpace = THREE.LinearSRGBColorSpace;
-
-            // Fix common Sketchfab model issues:
-            // 1. Ensure environment map is applied for PBR
-            if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
-              mat.envMap = envMap;
-              mat.envMapIntensity = 1.0;
-              mat.needsUpdate = true;
-            }
-
-            // 2. Fix transparent/glass materials
-            if (mat.transparent && mat.opacity < 0.99) {
-              mat.depthWrite = false;
-              mat.side = THREE.DoubleSide;
-            }
-
-            // 3. Handle alpha test for cutout textures (foliage etc)
-            if (mat.alphaTest > 0) {
-              mat.side = THREE.DoubleSide;
-            }
-          });
+        // Also store relative to gltf directory
+        if (gltfDir && entry.name.startsWith(gltfDir)) {
+          const relativePath = entry.name.substring(gltfDir.length);
+          blobUrlMap[relativePath] = blobUrl;
         }
-      });
 
-      scene.add(currentModel);
-      centerAndScaleModel(currentModel);
-      hideLoading();
-      document.getElementById('viewportHint').classList.add('hidden');
-
-      // Get model info for credit
-      fetchModelInfo(uid);
-    }, (progress) => {
-      if (progress.total > 0) {
-        setProgress(90 + (progress.loaded / progress.total) * 10);
+        // Also store by filename only
+        const basename = entry.name.split('/').pop();
+        if (basename && !blobUrlMap[basename]) {
+          blobUrlMap[basename] = blobUrl;
+        }
       }
-    }, (err) => {
-      hideLoading();
-      console.error('GLTF load error:', err);
-      alert('모델 로드 실패: ' + err.message);
-    });
+
+      // 2) Read and parse the glTF JSON
+      const gltfText = await entryFile.async('text');
+      let gltfJson;
+      try {
+        gltfJson = JSON.parse(gltfText);
+      } catch(e) {
+        throw new Error('glTF JSON 파싱 실패: ' + e.message);
+      }
+
+      // 3) Rewrite buffer URIs
+      if (gltfJson.buffers) {
+        for (const buffer of gltfJson.buffers) {
+          if (buffer.uri && !buffer.uri.startsWith('data:')) {
+            const resolved = resolveUri(buffer.uri, blobUrlMap);
+            if (resolved) buffer.uri = resolved;
+            else console.warn('[glTF] Buffer URI not found:', buffer.uri);
+          }
+        }
+      }
+
+      // 4) Rewrite image URIs
+      if (gltfJson.images) {
+        for (const image of gltfJson.images) {
+          if (image.uri && !image.uri.startsWith('data:')) {
+            const resolved = resolveUri(image.uri, blobUrlMap);
+            if (resolved) image.uri = resolved;
+            else console.warn('[glTF] Image URI not found:', image.uri);
+          }
+        }
+      }
+
+      // URI resolver: tries multiple strategies
+      function resolveUri(uri, map) {
+        const decoded = decodeURIComponent(uri);
+        // Exact match
+        if (map[decoded]) return map[decoded];
+        if (map[uri]) return map[uri];
+        // Stripped leading ./
+        const stripped = decoded.replace(/^\.\//, '');
+        if (map[stripped]) return map[stripped];
+        // Filename only
+        const filename = decoded.split('/').pop();
+        if (map[filename]) return map[filename];
+        // Case-insensitive filename
+        const lower = filename.toLowerCase();
+        for (const [key, val] of Object.entries(map)) {
+          if (key.toLowerCase().endsWith(lower)) return val;
+        }
+        return null;
+      }
+
+      // 5) Convert modified JSON back to string and parse with GLTFLoader
+      setLoadingText('3D 모델 렌더링중...');
+      setProgress(90);
+
+      const modifiedGltfStr = JSON.stringify(gltfJson);
+      const gltfBlob = new Blob([modifiedGltfStr], { type: 'model/gltf+json' });
+      const gltfBuffer = await gltfBlob.arrayBuffer();
+
+      // Use parse() with empty path since all URIs are now absolute blob URLs
+      loadGLTFFromBuffer(gltfBuffer, '', uid);
+    }
 
   } catch (err) {
     hideLoading();
@@ -1418,6 +1386,71 @@ window.selectModel = async function(uid, el) {
     alert('다운로드 오류: ' + err.message);
   }
 };
+
+// ═══════════════════════════════════════════════════
+// Load glTF/GLB from ArrayBuffer (shared by ZIP & file)
+// ═══════════════════════════════════════════════════
+function loadGLTFFromBuffer(buffer, path, uid) {
+  const loader = new GLTFLoader();
+  const dLoader = new DRACOLoader();
+  dLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/libs/draco/');
+  loader.setDRACOLoader(dLoader);
+
+  loader.parse(buffer, path, (gltf) => {
+    clearModel();
+    currentModel = gltf.scene;
+
+    // Fix materials for proper rendering
+    currentModel.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach(mat => {
+          if (!mat) return;
+
+          // Ensure textures have correct colorSpace
+          if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+          if (mat.emissiveMap) mat.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+          if (mat.normalMap) mat.normalMap.colorSpace = THREE.LinearSRGBColorSpace;
+          if (mat.roughnessMap) mat.roughnessMap.colorSpace = THREE.LinearSRGBColorSpace;
+          if (mat.metalnessMap) mat.metalnessMap.colorSpace = THREE.LinearSRGBColorSpace;
+          if (mat.aoMap) mat.aoMap.colorSpace = THREE.LinearSRGBColorSpace;
+
+          // Ensure environment map for PBR
+          if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+            mat.envMap = envMap;
+            mat.envMapIntensity = 1.0;
+            mat.needsUpdate = true;
+          }
+
+          // Fix transparent/glass materials
+          if (mat.transparent && mat.opacity < 0.99) {
+            mat.depthWrite = false;
+            mat.side = THREE.DoubleSide;
+          }
+
+          // Handle alpha cutout
+          if (mat.alphaTest > 0) {
+            mat.side = THREE.DoubleSide;
+          }
+        });
+      }
+    });
+
+    scene.add(currentModel);
+    centerAndScaleModel(currentModel);
+    hideLoading();
+    document.getElementById('viewportHint').classList.add('hidden');
+
+    if (uid) fetchModelInfo(uid);
+  }, (err) => {
+    hideLoading();
+    console.error('GLTF parse error:', err);
+    alert('모델 로드 실패: ' + err.message);
+  });
+}
 
 async function fetchModelInfo(uid) {
   try {
