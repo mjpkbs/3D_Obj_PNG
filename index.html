@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Object PNG Exporter</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --accent: #6c5ce7;
+    --accent-light: #a29bfe;
+    --accent-glow: rgba(108, 92, 231, 0.3);
+    --green: #00d2a0;
+    --orange: #fdcb6e;
+    --red: #ff6b6b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* Layout */
+  .app {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 56px 1fr;
+    height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+  }
+
+  .header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .header h1 .icon {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-light));
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .panel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 12px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-body {
+    padding: 14px;
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  .drop-zone .dz-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+
+  .drop-zone .dz-text {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .drop-zone .dz-text strong {
+    color: var(--accent-light);
+  }
+
+  /* Sample models grid */
+  .sample-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .sample-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 6px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+
+  .sample-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: var(--accent-glow);
+  }
+
+  .sample-btn .emoji {
+    font-size: 24px;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* Controls */
+  .control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .control-row:last-child { margin-bottom: 0; }
+
+  .control-label {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .control-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-light);
+    background: var(--surface);
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    margin: 6px 0;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent-light);
+    cursor: pointer;
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent-light);
+    cursor: pointer;
+    border: none;
+  }
+
+  /* Angle presets */
+  .angle-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .angle-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 4px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+
+  .angle-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  /* Color swatches */
+  .color-options {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .color-swatch {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .color-swatch:hover { transform: scale(1.1); }
+  .color-swatch.active { border-color: var(--accent-light); }
+
+  .color-swatch.transparent {
+    background: repeating-conic-gradient(#444 0% 25%, #666 0% 50%) 50% / 10px 10px;
+  }
+
+  /* Buttons */
+  .btn {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .btn:hover { border-color: var(--accent); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #7c6cf0);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 4px 20px var(--accent-glow);
+    transform: translateY(-1px);
+  }
+
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  /* Export size select */
+  select {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    outline: none;
+    width: 100%;
+  }
+
+  select:focus { border-color: var(--accent); }
+
+  /* Viewport */
+  .viewport {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  .viewport canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Checkerboard background for transparent mode */
+  .viewport.transparent-bg {
+    background-image:
+      linear-gradient(45deg, #1a1a24 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1a24 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1a24 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1a24 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color: #13131a;
+  }
+
+  /* Camera info overlay */
+  .camera-info {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    background: rgba(10, 10, 15, 0.85);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 16px;
+  }
+
+  .camera-info span { color: var(--accent-light); }
+
+  /* Hint overlay */
+  .viewport-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-dim);
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.5s;
+  }
+
+  .viewport-hint.hidden { opacity: 0; }
+
+  .viewport-hint .hint-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+  }
+
+  .viewport-hint p {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* Export preview */
+  .export-preview {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(10px);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .export-preview.visible { display: flex; }
+
+  .export-preview img {
+    max-width: 80%;
+    max-height: 60vh;
+    border-radius: 8px;
+    background: repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 50% / 16px 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  .export-preview .preview-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .export-preview .preview-info {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  /* Toggle */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .toggle {
+    width: 36px;
+    height: 20px;
+    background: var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+  }
+
+  .toggle.active { background: var(--accent); }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px; left: 2px;
+    transition: transform 0.2s;
+  }
+
+  .toggle.active::after { transform: translateX(16px); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .app {
+      grid-template-columns: 1fr;
+      grid-template-rows: 56px 1fr auto;
+    }
+    .sidebar {
+      grid-row: 3;
+      max-height: 40vh;
+      border-right: none;
+      border-top: 1px solid var(--border);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <h1>
+      <div class="icon">◇</div>
+      3D Object PNG Exporter
+    </h1>
+    <div class="header-actions">
+      <button class="btn btn-sm" onclick="resetCamera()" title="카메라 리셋">⟲ Reset</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <!-- File Upload -->
+    <div class="panel">
+      <div class="panel-header">📁 3D 모델 불러오기</div>
+      <div class="panel-body">
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <div class="dz-icon">📦</div>
+          <div class="dz-text">
+            <strong>GLB / GLTF 파일</strong>을<br>
+            드래그하거나 클릭하여 업로드
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept=".glb,.gltf" style="display:none">
+        <div style="margin-top: 10px;">
+          <div class="panel-header" style="padding: 8px 0; border:none; margin-bottom: 6px;">기본 오브젝트</div>
+          <div class="sample-grid">
+            <button class="sample-btn" onclick="loadPrimitive('box')"><span class="emoji">🧊</span>큐브</button>
+            <button class="sample-btn" onclick="loadPrimitive('sphere')"><span class="emoji">🔮</span>구체</button>
+            <button class="sample-btn" onclick="loadPrimitive('cylinder')"><span class="emoji">🥫</span>실린더</button>
+            <button class="sample-btn" onclick="loadPrimitive('torus')"><span class="emoji">🍩</span>토러스</button>
+            <button class="sample-btn" onclick="loadPrimitive('cone')"><span class="emoji">🔺</span>콘</button>
+            <button class="sample-btn" onclick="loadPrimitive('teapot')"><span class="emoji">🫖</span>티팟</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera / Angle -->
+    <div class="panel">
+      <div class="panel-header">📐 카메라 각도</div>
+      <div class="panel-body">
+        <div class="control-row">
+          <span class="control-label">수평 회전 (Azimuth)</span>
+          <span class="control-value" id="azimuthVal">0°</span>
+        </div>
+        <input type="range" id="azimuth" min="0" max="360" value="45" step="1" oninput="setCameraAngle()">
+
+        <div class="control-row" style="margin-top:8px">
+          <span class="control-label">수직 회전 (Elevation)</span>
+          <span class="control-value" id="elevationVal">30°</span>
+        </div>
+        <input type="range" id="elevation" min="-89" max="89" value="30" step="1" oninput="setCameraAngle()">
+
+        <div class="control-row" style="margin-top:8px">
+          <span class="control-label">거리 (Zoom)</span>
+          <span class="control-value" id="distanceVal">3.0</span>
+        </div>
+        <input type="range" id="distance" min="1" max="20" value="5" step="0.1" oninput="setCameraAngle()">
+
+        <div class="angle-grid">
+          <button class="angle-btn" onclick="setPresetAngle(0,0)">정면</button>
+          <button class="angle-btn" onclick="setPresetAngle(0,90)">상단</button>
+          <button class="angle-btn" onclick="setPresetAngle(180,0)">후면</button>
+          <button class="angle-btn" onclick="setPresetAngle(90,0)">좌측</button>
+          <button class="angle-btn" onclick="setPresetAngle(270,0)">우측</button>
+          <button class="angle-btn" onclick="setPresetAngle(45,30)">3/4뷰</button>
+          <button class="angle-btn" onclick="setPresetAngle(0,-60)">하단</button>
+          <button class="angle-btn" onclick="setPresetAngle(135,25)">후측면</button>
+          <button class="angle-btn" onclick="setPresetAngle(315,45)">아이소</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Background -->
+    <div class="panel">
+      <div class="panel-header">🎨 배경</div>
+      <div class="panel-body">
+        <div class="toggle-row">
+          <span class="control-label">투명 배경 (PNG Alpha)</span>
+          <div class="toggle active" id="transparentToggle" onclick="toggleTransparent()"></div>
+        </div>
+        <div id="bgColorSection">
+          <span class="control-label">배경 색상 (투명 OFF시)</span>
+          <div class="color-options">
+            <div class="color-swatch transparent active" data-color="transparent" onclick="setBgColor(this, null)"></div>
+            <div class="color-swatch" style="background:#ffffff" data-color="#ffffff" onclick="setBgColor(this, '#ffffff')"></div>
+            <div class="color-swatch" style="background:#1a1a2e" data-color="#1a1a2e" onclick="setBgColor(this, '#1a1a2e')"></div>
+            <div class="color-swatch" style="background:#0f3460" data-color="#0f3460" onclick="setBgColor(this, '#0f3460')"></div>
+            <div class="color-swatch" style="background:#e94560" data-color="#e94560" onclick="setBgColor(this, '#e94560')"></div>
+            <div class="color-swatch" style="background:#00d2a0" data-color="#00d2a0" onclick="setBgColor(this, '#00d2a0')"></div>
+            <input type="color" value="#333333" style="width:28px;height:28px;border:none;padding:0;cursor:pointer;border-radius:6px;" onchange="setBgColor(null, this.value)">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lighting -->
+    <div class="panel">
+      <div class="panel-header">💡 조명</div>
+      <div class="panel-body">
+        <div class="control-row">
+          <span class="control-label">환경광 강도</span>
+          <span class="control-value" id="ambientVal">0.6</span>
+        </div>
+        <input type="range" id="ambientIntensity" min="0" max="2" value="0.6" step="0.05" oninput="updateLighting()">
+
+        <div class="control-row" style="margin-top:8px">
+          <span class="control-label">방향광 강도</span>
+          <span class="control-value" id="dirVal">1.0</span>
+        </div>
+        <input type="range" id="dirIntensity" min="0" max="3" value="1.0" step="0.05" oninput="updateLighting()">
+
+        <div class="toggle-row" style="margin-top:8px">
+          <span class="control-label">그림자</span>
+          <div class="toggle" id="shadowToggle" onclick="toggleShadow()"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export -->
+    <div class="panel">
+      <div class="panel-header">📸 내보내기</div>
+      <div class="panel-body">
+        <div class="control-row">
+          <span class="control-label">해상도</span>
+        </div>
+        <select id="exportSize">
+          <option value="1024">1024 × 1024</option>
+          <option value="2048" selected>2048 × 2048</option>
+          <option value="4096">4096 × 4096</option>
+          <option value="custom">커스텀</option>
+        </select>
+        <div id="customSizeRow" style="display:none; margin-top:8px; display:none; gap:6px;">
+          <input type="number" id="customW" value="1920" min="100" max="8192" style="width:50%;padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:JetBrains Mono,monospace;font-size:12px;">
+          <span style="color:var(--text-dim);font-size:12px;">×</span>
+          <input type="number" id="customH" value="1080" min="100" max="8192" style="width:50%;padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:JetBrains Mono,monospace;font-size:12px;">
+        </div>
+
+        <button class="btn btn-primary" style="margin-top:12px" onclick="exportPNG()">
+          📥 PNG 다운로드
+        </button>
+        <button class="btn" style="margin-top:6px" onclick="exportAllAngles()">
+          🔄 다각도 일괄 내보내기 (8방향)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Viewport -->
+  <div class="viewport" id="viewport">
+    <div class="viewport-hint" id="viewportHint">
+      <div class="hint-icon">🖱️</div>
+      <p>마우스로 드래그하여 회전<br>스크롤로 줌 인/아웃<br>우클릭 드래그로 이동</p>
+    </div>
+    <div class="camera-info" id="cameraInfo">
+      수평: <span id="infoAz">45°</span>
+      수직: <span id="infoEl">30°</span>
+      거리: <span id="infoDist">5.0</span>
+    </div>
+  </div>
+</div>
+
+<!-- Export Preview Modal -->
+<div class="export-preview" id="exportPreview">
+  <img id="previewImg" src="">
+  <div class="preview-info" id="previewInfo"></div>
+  <div class="preview-actions">
+    <button class="btn btn-primary btn-sm" onclick="downloadPreview()">💾 저장</button>
+    <button class="btn btn-sm" onclick="closePreview()">닫기</button>
+  </div>
+</div>
+
+<!-- Three.js -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+// ─── Scene Setup ───────────────────────────────────
+const viewport = document.getElementById('viewport');
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 1000);
+camera.position.set(3, 3, 5);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: true,
+  preserveDrawingBuffer: true
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+renderer.shadowMap.enabled = false;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+viewport.insertBefore(renderer.domElement, viewport.firstChild);
+
+// Controls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = true;
+controls.enableZoom = true;
+controls.minDistance = 0.5;
+controls.maxDistance = 50;
+
+// ─── Lighting ──────────────────────────────────────
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight.position.set(5, 10, 7);
+dirLight.castShadow = false;
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.camera.near = 0.1;
+dirLight.shadow.camera.far = 50;
+dirLight.shadow.camera.left = -10;
+dirLight.shadow.camera.right = 10;
+dirLight.shadow.camera.top = 10;
+dirLight.shadow.camera.bottom = -10;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0xaaccff, 0.3);
+fillLight.position.set(-3, 2, -5);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xffeedd, 0.4);
+rimLight.position.set(0, -2, -6);
+scene.add(rimLight);
+
+// Ground plane for shadow
+const groundGeo = new THREE.PlaneGeometry(50, 50);
+const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.01;
+ground.receiveShadow = true;
+ground.visible = false;
+scene.add(ground);
+
+// Grid helper
+const gridHelper = new THREE.GridHelper(10, 20, 0x2a2a3a, 0x1a1a24);
+scene.add(gridHelper);
+
+// ─── State ─────────────────────────────────────────
+let currentModel = null;
+let isTransparent = true;
+let bgColor = null;
+let exportBlob = null;
+
+// ─── GLTF Loader ───────────────────────────────────
+const gltfLoader = new GLTFLoader();
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/libs/draco/');
+gltfLoader.setDRACOLoader(dracoLoader);
+
+// ─── Load Model ────────────────────────────────────
+function clearModel() {
+  if (currentModel) {
+    scene.remove(currentModel);
+    currentModel.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    currentModel = null;
+  }
+}
+
+function centerAndScaleModel(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = 3 / maxDim;
+
+  object.position.sub(center);
+  object.position.multiplyScalar(scale);
+  object.scale.multiplyScalar(scale);
+
+  // Adjust ground
+  const newBox = new THREE.Box3().setFromObject(object);
+  ground.position.y = newBox.min.y;
+
+  // Adjust camera distance
+  document.getElementById('distance').value = 5;
+  setCameraAngle();
+}
+
+function loadGLB(url) {
+  clearModel();
+  document.getElementById('viewportHint').classList.add('hidden');
+
+  gltfLoader.load(url, (gltf) => {
+    currentModel = gltf.scene;
+    currentModel.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    scene.add(currentModel);
+    centerAndScaleModel(currentModel);
+  }, undefined, (err) => {
+    console.error('GLB load error:', err);
+    alert('GLB 파일 로드에 실패했습니다.');
+  });
+}
+
+function loadGLBFromFile(file) {
+  clearModel();
+  document.getElementById('viewportHint').classList.add('hidden');
+  const url = URL.createObjectURL(file);
+
+  gltfLoader.load(url, (gltf) => {
+    currentModel = gltf.scene;
+    currentModel.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    scene.add(currentModel);
+    centerAndScaleModel(currentModel);
+    URL.revokeObjectURL(url);
+  }, undefined, (err) => {
+    console.error('File load error:', err);
+    alert('파일 로드에 실패했습니다. GLB/GLTF 형식을 확인해주세요.');
+    URL.revokeObjectURL(url);
+  });
+}
+
+// ─── Primitives ────────────────────────────────────
+window.loadPrimitive = function(type) {
+  clearModel();
+  document.getElementById('viewportHint').classList.add('hidden');
+
+  let geometry, material;
+  material = new THREE.MeshStandardMaterial({
+    color: 0x6c5ce7,
+    roughness: 0.35,
+    metalness: 0.1,
+  });
+
+  switch(type) {
+    case 'box':
+      geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5, 4, 4, 4);
+      break;
+    case 'sphere':
+      geometry = new THREE.SphereGeometry(1, 64, 64);
+      material.color.set(0x00d2a0);
+      material.metalness = 0.3;
+      material.roughness = 0.15;
+      break;
+    case 'cylinder':
+      geometry = new THREE.CylinderGeometry(0.7, 0.7, 2, 64);
+      material.color.set(0xfdcb6e);
+      break;
+    case 'torus':
+      geometry = new THREE.TorusGeometry(1, 0.4, 32, 64);
+      material.color.set(0xff6b6b);
+      material.metalness = 0.5;
+      material.roughness = 0.2;
+      break;
+    case 'cone':
+      geometry = new THREE.ConeGeometry(1, 2, 64);
+      material.color.set(0xa29bfe);
+      break;
+    case 'teapot':
+      // Utah Teapot approximation using TorusKnot
+      geometry = new THREE.TorusKnotGeometry(0.8, 0.3, 128, 32);
+      material.color.set(0xe17055);
+      material.metalness = 0.6;
+      material.roughness = 0.15;
+      break;
+  }
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  currentModel = new THREE.Group();
+  currentModel.add(mesh);
+  scene.add(currentModel);
+  centerAndScaleModel(currentModel);
+};
+
+// ─── Camera Control ────────────────────────────────
+window.setCameraAngle = function() {
+  const az = parseFloat(document.getElementById('azimuth').value);
+  const el = parseFloat(document.getElementById('elevation').value);
+  const dist = parseFloat(document.getElementById('distance').value);
+
+  const azRad = THREE.MathUtils.degToRad(az);
+  const elRad = THREE.MathUtils.degToRad(el);
+
+  camera.position.x = dist * Math.cos(elRad) * Math.sin(azRad);
+  camera.position.y = dist * Math.sin(elRad);
+  camera.position.z = dist * Math.cos(elRad) * Math.cos(azRad);
+
+  camera.lookAt(0, 0, 0);
+  controls.target.set(0, 0, 0);
+  controls.update();
+
+  document.getElementById('azimuthVal').textContent = az + '°';
+  document.getElementById('elevationVal').textContent = el + '°';
+  document.getElementById('distanceVal').textContent = dist.toFixed(1);
+
+  updateCameraInfo();
+};
+
+window.setPresetAngle = function(az, el) {
+  document.getElementById('azimuth').value = az;
+  document.getElementById('elevation').value = el;
+  setCameraAngle();
+};
+
+window.resetCamera = function() {
+  document.getElementById('azimuth').value = 45;
+  document.getElementById('elevation').value = 30;
+  document.getElementById('distance').value = 5;
+  setCameraAngle();
+};
+
+function updateCameraInfo() {
+  // Convert camera position back to spherical
+  const pos = camera.position;
+  const dist = pos.length();
+  const el = THREE.MathUtils.radToDeg(Math.asin(pos.y / dist));
+  const az = THREE.MathUtils.radToDeg(Math.atan2(pos.x, pos.z));
+
+  document.getElementById('infoAz').textContent = ((az % 360 + 360) % 360).toFixed(0) + '°';
+  document.getElementById('infoEl').textContent = el.toFixed(0) + '°';
+  document.getElementById('infoDist').textContent = dist.toFixed(1);
+}
+
+// ─── Background ────────────────────────────────────
+window.toggleTransparent = function() {
+  const toggle = document.getElementById('transparentToggle');
+  isTransparent = !isTransparent;
+  toggle.classList.toggle('active', isTransparent);
+
+  if (isTransparent) {
+    scene.background = null;
+    viewport.classList.add('transparent-bg');
+  } else {
+    if (bgColor) {
+      scene.background = new THREE.Color(bgColor);
+    }
+    viewport.classList.remove('transparent-bg');
+  }
+};
+
+window.setBgColor = function(el, color) {
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  if (color === null) {
+    isTransparent = true;
+    document.getElementById('transparentToggle').classList.add('active');
+    scene.background = null;
+    viewport.classList.add('transparent-bg');
+    bgColor = null;
+  } else {
+    isTransparent = false;
+    document.getElementById('transparentToggle').classList.remove('active');
+    bgColor = color;
+    scene.background = new THREE.Color(color);
+    viewport.classList.remove('transparent-bg');
+  }
+};
+
+// ─── Lighting Controls ─────────────────────────────
+window.updateLighting = function() {
+  const amb = parseFloat(document.getElementById('ambientIntensity').value);
+  const dir = parseFloat(document.getElementById('dirIntensity').value);
+  ambientLight.intensity = amb;
+  dirLight.intensity = dir;
+  document.getElementById('ambientVal').textContent = amb.toFixed(2);
+  document.getElementById('dirVal').textContent = dir.toFixed(2);
+};
+
+window.toggleShadow = function() {
+  const toggle = document.getElementById('shadowToggle');
+  toggle.classList.toggle('active');
+  const enabled = toggle.classList.contains('active');
+  renderer.shadowMap.enabled = enabled;
+  dirLight.castShadow = enabled;
+  ground.visible = enabled;
+  // Need to re-compile materials
+  scene.traverse(child => {
+    if (child.material) child.material.needsUpdate = true;
+  });
+};
+
+// ─── Export ─────────────────────────────────────────
+function getExportSize() {
+  const sel = document.getElementById('exportSize').value;
+  if (sel === 'custom') {
+    return {
+      w: parseInt(document.getElementById('customW').value) || 2048,
+      h: parseInt(document.getElementById('customH').value) || 2048
+    };
+  }
+  const s = parseInt(sel);
+  return { w: s, h: s };
+}
+
+function captureAtSize(w, h) {
+  // Save current state
+  const prevW = renderer.domElement.width;
+  const prevH = renderer.domElement.height;
+  const prevAspect = camera.aspect;
+
+  // Resize for capture
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+
+  // Render
+  renderer.render(scene, camera);
+
+  // Capture
+  const dataURL = renderer.domElement.toDataURL('image/png');
+
+  // Restore
+  renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+  camera.aspect = viewport.clientWidth / viewport.clientHeight;
+  camera.updateProjectionMatrix();
+
+  return dataURL;
+}
+
+window.exportPNG = function() {
+  if (!currentModel) {
+    alert('먼저 3D 모델을 불러와주세요.');
+    return;
+  }
+
+  const { w, h } = getExportSize();
+
+  // Hide grid for export
+  gridHelper.visible = false;
+  renderer.render(scene, camera);
+
+  const dataURL = captureAtSize(w, h);
+
+  gridHelper.visible = true;
+
+  // Show preview
+  const preview = document.getElementById('exportPreview');
+  const previewImg = document.getElementById('previewImg');
+  const previewInfo = document.getElementById('previewInfo');
+
+  previewImg.src = dataURL;
+  previewInfo.textContent = `${w} × ${h} px  ·  PNG${isTransparent ? ' (투명 배경)' : ''}`;
+  preview.classList.add('visible');
+
+  // Convert to blob for download
+  fetch(dataURL).then(r => r.blob()).then(blob => { exportBlob = blob; });
+};
+
+window.downloadPreview = function() {
+  if (!exportBlob) return;
+  const url = URL.createObjectURL(exportBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `3d-export-${Date.now()}.png`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+window.closePreview = function() {
+  document.getElementById('exportPreview').classList.remove('visible');
+};
+
+window.exportAllAngles = function() {
+  if (!currentModel) {
+    alert('먼저 3D 모델을 불러와주세요.');
+    return;
+  }
+
+  const angles = [
+    { name: 'front',      az: 0,   el: 0 },
+    { name: 'front-right', az: 45,  el: 20 },
+    { name: 'right',      az: 90,  el: 0 },
+    { name: 'back-right', az: 135, el: 20 },
+    { name: 'back',       az: 180, el: 0 },
+    { name: 'back-left',  az: 225, el: 20 },
+    { name: 'left',       az: 270, el: 0 },
+    { name: 'front-left', az: 315, el: 20 },
+  ];
+
+  gridHelper.visible = false;
+  const { w, h } = getExportSize();
+
+  angles.forEach((angle, i) => {
+    setTimeout(() => {
+      const azRad = THREE.MathUtils.degToRad(angle.az);
+      const elRad = THREE.MathUtils.degToRad(angle.el);
+      const dist = parseFloat(document.getElementById('distance').value);
+
+      camera.position.x = dist * Math.cos(elRad) * Math.sin(azRad);
+      camera.position.y = dist * Math.sin(elRad);
+      camera.position.z = dist * Math.cos(elRad) * Math.cos(azRad);
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+
+      const dataURL = captureAtSize(w, h);
+
+      fetch(dataURL).then(r => r.blob()).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `3d-${angle.name}-${w}x${h}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      if (i === angles.length - 1) {
+        gridHelper.visible = true;
+        // Restore camera
+        setCameraAngle();
+      }
+    }, i * 200);
+  });
+};
+
+// ─── Export size toggle ────────────────────────────
+document.getElementById('exportSize').addEventListener('change', function() {
+  const row = document.getElementById('customSizeRow');
+  row.style.display = this.value === 'custom' ? 'flex' : 'none';
+});
+
+// ─── File Input ────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (file) loadGLBFromFile(file);
+});
+
+// Drop zone
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) loadGLBFromFile(file);
+});
+
+// Also support dropping on viewport
+viewport.addEventListener('dragover', (e) => e.preventDefault());
+viewport.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) loadGLBFromFile(file);
+});
+
+// ─── Sync sliders from orbit controls ──────────────
+controls.addEventListener('change', () => {
+  const pos = camera.position;
+  const dist = pos.length();
+  const el = THREE.MathUtils.radToDeg(Math.asin(pos.y / dist));
+  const az = THREE.MathUtils.radToDeg(Math.atan2(pos.x, pos.z));
+
+  document.getElementById('azimuth').value = ((az % 360 + 360) % 360).toFixed(0);
+  document.getElementById('elevation').value = el.toFixed(0);
+  document.getElementById('distance').value = dist.toFixed(1);
+
+  document.getElementById('azimuthVal').textContent = ((az % 360 + 360) % 360).toFixed(0) + '°';
+  document.getElementById('elevationVal').textContent = el.toFixed(0) + '°';
+  document.getElementById('distanceVal').textContent = dist.toFixed(1);
+
+  updateCameraInfo();
+});
+
+// ─── Resize ────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = viewport.clientWidth / viewport.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+});
+
+// ─── Animate ───────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+animate();
+viewport.classList.add('transparent-bg');
+
+// Initial angle
+setCameraAngle();
+
+// Load default primitive
+loadPrimitive('sphere');
+</script>
+
+</body>
+</html>
