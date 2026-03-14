@@ -1516,19 +1516,54 @@ function clearModel() {
 }
 
 function centerAndScaleModel(object) {
+  // Use a wrapper group approach to avoid corrupting the model's internal transforms.
+  // The old method (modifying object.position and object.scale directly) breaks
+  // complex models with deep hierarchies, skinned meshes, or animation data.
+
+  // 1. Compute bounding box of the raw model
   const box = new THREE.Box3().setFromObject(object);
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z);
-  const scale = 3 / maxDim;
 
-  object.position.sub(center);
-  object.position.multiplyScalar(scale);
-  object.scale.multiplyScalar(scale);
+  if (maxDim === 0) return; // empty model
 
-  const newBox = new THREE.Box3().setFromObject(object);
-  ground.position.y = newBox.min.y;
+  const targetSize = 4; // target bounding box max dimension
+  const scale = targetSize / maxDim;
 
+  // 2. Remove the raw model from scene (it was added by the caller)
+  scene.remove(object);
+
+  // 3. Create a wrapper group
+  const wrapper = new THREE.Group();
+  wrapper.name = '__model_wrapper__';
+
+  // 4. Add model to wrapper
+  wrapper.add(object);
+
+  // 5. Scale the wrapper uniformly
+  wrapper.scale.setScalar(scale);
+
+  // 6. After scaling, recompute bounding box and center it
+  wrapper.updateMatrixWorld(true);
+  const scaledBox = new THREE.Box3().setFromObject(wrapper);
+  const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+
+  // 7. Offset wrapper so model center is at world origin
+  wrapper.position.sub(scaledCenter);
+
+  // 8. Add wrapper to scene
+  scene.add(wrapper);
+
+  // 9. Update currentModel reference to the wrapper (for cleanup)
+  currentModel = wrapper;
+
+  // 10. Place ground plane at bottom of model
+  wrapper.updateMatrixWorld(true);
+  const finalBox = new THREE.Box3().setFromObject(wrapper);
+  ground.position.y = finalBox.min.y;
+
+  // 11. Set camera distance based on model size
   document.getElementById('distance').value = 5;
   setCameraAngle();
 }
