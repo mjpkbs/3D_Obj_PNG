@@ -953,6 +953,16 @@ const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
 dirLight.position.set(5, 10, 7);
+// Shadow configuration - prevent shadow acne on smooth surfaces
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.bias = -0.0005;
+dirLight.shadow.normalBias = 0.02;  // key fix: offsets along surface normal to prevent self-shadowing
+dirLight.shadow.camera.near = 0.1;
+dirLight.shadow.camera.far = 50;
+dirLight.shadow.camera.left = -10;
+dirLight.shadow.camera.right = 10;
+dirLight.shadow.camera.top = 10;
+dirLight.shadow.camera.bottom = -10;
 scene.add(dirLight);
 const fillLight = new THREE.DirectionalLight(0xaaccff, 0.5);
 fillLight.position.set(-5, 3, -5);
@@ -1459,7 +1469,7 @@ function loadGLTFFromData(data, path, uid) {
     currentModel.traverse(child => {
       if (child.isMesh) {
         child.castShadow = true;
-        child.receiveShadow = true;
+        child.receiveShadow = false; // only ground receives shadows; self-shadowing causes acne
 
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach(mat => {
@@ -1663,7 +1673,7 @@ function loadGLBFromFile(file) {
 
   gltfLoader.load(url, (gltf) => {
     currentModel = gltf.scene;
-    currentModel.traverse(child => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
+    currentModel.traverse(child => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = false; } });
     scene.add(currentModel);
     centerAndScaleModel(currentModel);
     URL.revokeObjectURL(url);
