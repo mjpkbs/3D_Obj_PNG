@@ -1279,7 +1279,7 @@ window.selectModel = async function(uid, el) {
       setLoadingText('GLB 모델 로딩중...');
       setProgress(85);
       const glbBuffer = await entryFile.async('arraybuffer');
-      loadGLTFFromBuffer(glbBuffer, '', uid);
+      loadGLTFFromData(glbBuffer, '', uid);
 
     } else {
       // ── glTF: rewrite URIs inside JSON to blob URLs ──
@@ -1368,16 +1368,14 @@ window.selectModel = async function(uid, el) {
         return null;
       }
 
-      // 5) Convert modified JSON back to string and parse with GLTFLoader
+      // 5) Pass modified JSON STRING directly to GLTFLoader.parse()
+      // CRITICAL: Do NOT convert to ArrayBuffer - that causes GLTFLoader to
+      // misinterpret it as GLB binary, corrupting geometry buffer offsets.
       setLoadingText('3D 모델 렌더링중...');
       setProgress(90);
 
       const modifiedGltfStr = JSON.stringify(gltfJson);
-      const gltfBlob = new Blob([modifiedGltfStr], { type: 'model/gltf+json' });
-      const gltfBuffer = await gltfBlob.arrayBuffer();
-
-      // Use parse() with empty path since all URIs are now absolute blob URLs
-      loadGLTFFromBuffer(gltfBuffer, '', uid);
+      loadGLTFFromData(modifiedGltfStr, '', uid);
     }
 
   } catch (err) {
@@ -1388,15 +1386,15 @@ window.selectModel = async function(uid, el) {
 };
 
 // ═══════════════════════════════════════════════════
-// Load glTF/GLB from ArrayBuffer (shared by ZIP & file)
+// Load glTF/GLB - accepts String (glTF JSON) or ArrayBuffer (GLB)
 // ═══════════════════════════════════════════════════
-function loadGLTFFromBuffer(buffer, path, uid) {
+function loadGLTFFromData(data, path, uid) {
   const loader = new GLTFLoader();
   const dLoader = new DRACOLoader();
   dLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/libs/draco/');
   loader.setDRACOLoader(dLoader);
 
-  loader.parse(buffer, path, (gltf) => {
+  loader.parse(data, path, (gltf) => {
     clearModel();
     currentModel = gltf.scene;
 
