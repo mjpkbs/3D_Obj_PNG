@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>3D Object PNG Exporter + Sketchfab</title>
+<title>3D Object PNG Exporter · Sketchfab + Poly Haven</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -558,6 +558,88 @@
     .app { grid-template-columns: 1fr; grid-template-rows: 52px 1fr 45vh; }
     .sidebar { grid-row: 3; border-right: none; border-top: 1px solid var(--border); }
   }
+
+  /* ── Source Badges ── */
+  .source-badge {
+    position: absolute; bottom: 38px; left: 4px;
+    font-size: 8px; font-weight: 600;
+    padding: 2px 5px; border-radius: 3px;
+    backdrop-filter: blur(4px);
+    z-index: 2;
+  }
+  .source-badge.sketchfab { background: rgba(23,112,191,0.85); color: #fff; }
+  .source-badge.polyhaven { background: rgba(0,210,160,0.85); color: #000; }
+
+  /* ── Results Section Headers ── */
+  .results-section-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 4px 6px;
+    font-size: 11px; font-weight: 600;
+    color: var(--text-dim);
+  }
+  .results-section-header .count {
+    font-weight: 400; font-size: 10px;
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+
+  /* ── Source Filter Chips ── */
+  .source-chips { display: flex; gap: 4px; margin-bottom: 8px; }
+  .source-chip {
+    font-size: 10px; padding: 4px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer; color: var(--text-dim);
+    transition: all 0.15s;
+    font-family: inherit; font-weight: 500;
+  }
+  .source-chip:hover { border-color: var(--accent); color: var(--text); }
+  .source-chip.active {
+    border-color: var(--accent);
+    color: var(--accent-light);
+    background: var(--accent-glow);
+  }
+
+  /* ── HDRI Mini Browser in Settings ── */
+  .hdri-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px; margin-top: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .hdri-grid::-webkit-scrollbar { width: 3px; }
+  .hdri-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .hdri-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .hdri-card:hover { border-color: var(--orange); transform: translateY(-1px); }
+  .hdri-card.active { border-color: var(--accent-light); box-shadow: 0 0 0 2px var(--accent-glow); }
+  .hdri-card img {
+    width: 100%; aspect-ratio: 2/1;
+    object-fit: cover; display: block;
+    background: var(--surface2);
+  }
+  .hdri-card-name {
+    font-size: 9px; padding: 3px 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--text-dim);
+  }
+  .hdri-active-dot {
+    position: absolute; top: 3px; right: 3px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-light);
+    box-shadow: 0 0 6px var(--accent);
+    display: none;
+  }
+  .hdri-card.active .hdri-active-dot { display: block; }
 </style>
 </head>
 <body>
@@ -578,34 +660,34 @@
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-tabs">
-      <button class="sidebar-tab active" onclick="switchTab('search')">🔍 Sketchfab 검색</button>
-      <button class="sidebar-tab" onclick="switchTab('upload')">📁 파일 업로드</button>
+      <button class="sidebar-tab active" onclick="switchTab('search')">🔍 3D 모델 검색</button>
+      <button class="sidebar-tab" onclick="switchTab('upload')">📁 업로드</button>
       <button class="sidebar-tab" onclick="switchTab('settings')">⚙️ 설정</button>
     </div>
 
-    <!-- Tab: Search -->
+    <!-- Tab: Unified Search -->
     <div class="tab-content active" id="tab-search">
-      <!-- API Token -->
+      <!-- API Token (collapsed) -->
       <div class="panel">
-        <div class="panel-header">🔑 Sketchfab API Token</div>
-        <div class="panel-body">
+        <div class="panel-header" style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">🔑 Sketchfab API Token <span style="margin-left:auto;font-size:9px;color:var(--accent-light);text-transform:none;letter-spacing:0" id="tokenHint">▸ 펼치기</span></div>
+        <div class="panel-body" style="display:none">
           <div class="token-bar">
             <input type="password" id="apiToken" placeholder="API Token 입력..." onchange="saveToken()">
             <div class="token-status" id="tokenStatus"></div>
           </div>
           <p class="help-text">
-            <a href="https://sketchfab.com/settings/password" target="_blank">sketchfab.com/settings/password</a> 에서 API Token을 복사하세요. 검색은 토큰 없이도 가능하지만, 다운로드에는 필요합니다.
+            <a href="https://sketchfab.com/settings/password" target="_blank">sketchfab.com/settings/password</a> 에서 Token 복사. Sketchfab 다운로드에 필요하며, Poly Haven은 토큰 없이 사용 가능합니다.
           </p>
         </div>
       </div>
 
-      <!-- Search -->
+      <!-- Unified Search -->
       <div class="panel">
-        <div class="panel-header">🔍 3D 모델 검색 <span style="font-size:9px;color:var(--cyan);font-weight:400;text-transform:none;letter-spacing:0">· 한국어 자동번역</span></div>
+        <div class="panel-header">🔍 통합 검색 <span style="font-size:9px;color:var(--cyan);font-weight:400;text-transform:none;letter-spacing:0">Sketchfab + Poly Haven · 한국어OK</span></div>
         <div class="panel-body">
           <div class="search-bar">
-            <input type="text" id="searchQuery" placeholder="자동차, 비행기, 전투기... (한/영 모두 OK)" onkeydown="if(event.key==='Enter')searchModels()">
-            <button class="btn btn-primary btn-sm" onclick="searchModels()">검색</button>
+            <input type="text" id="searchQuery" placeholder="자동차, 비행기, 전투기... (한/영 모두 OK)" onkeydown="if(event.key==='Enter')unifiedSearch()">
+            <button class="btn btn-primary btn-sm" onclick="unifiedSearch()">검색</button>
           </div>
           <div class="translate-indicator" id="translateIndicator" style="display:none">
             <span class="translate-badge">🌐 번역</span>
@@ -613,6 +695,13 @@
             <span class="translate-arrow">→</span>
             <span class="translate-to" id="translateTo"></span>
           </div>
+          <!-- Source Filter -->
+          <div class="source-chips">
+            <button class="source-chip active" data-source="all" onclick="setSourceFilter(this,'all')">전체</button>
+            <button class="source-chip" data-source="sketchfab" onclick="setSourceFilter(this,'sketchfab')">Sketchfab</button>
+            <button class="source-chip" data-source="polyhaven" onclick="setSourceFilter(this,'polyhaven')">Poly Haven</button>
+          </div>
+          <!-- Quick Chips -->
           <div class="category-chips">
             <button class="chip" onclick="quickSearch('자동차')">🚗 자동차</button>
             <button class="chip" onclick="quickSearch('비행기')">✈️ 비행기</button>
@@ -624,18 +713,18 @@
             <button class="chip" onclick="quickSearch('로봇')">🤖 로봇</button>
           </div>
           <div class="toggle-row">
-            <span class="control-label">다운로드 가능한 모델만</span>
+            <span class="control-label">Sketchfab: 다운로드 가능 모델만</span>
             <div class="toggle active" id="downloadableToggle" onclick="this.classList.toggle('active')"></div>
           </div>
         </div>
       </div>
 
-      <!-- Results -->
+      <!-- Combined Results -->
       <div id="searchResults">
-        <div class="no-results">Sketchfab에서 3D 모델을 검색해보세요</div>
+        <div class="no-results">Sketchfab + Poly Haven에서<br>3D 모델을 검색해보세요</div>
       </div>
 
-      <!-- Pagination -->
+      <!-- Pagination (Sketchfab only) -->
       <div class="pagination" id="pagination" style="display:none">
         <button class="btn btn-sm" id="prevBtn" onclick="prevPage()" disabled>← 이전</button>
         <span class="page-info" id="pageInfo">1</span>
@@ -777,6 +866,31 @@
         </div>
       </div>
 
+      <!-- HDRI Environment -->
+      <div class="panel">
+        <div class="panel-header">🌅 환경맵 (HDRI) <span style="font-size:9px;color:var(--orange);font-weight:400;text-transform:none;letter-spacing:0">· Poly Haven CC0</span></div>
+        <div class="panel-body">
+          <div class="control-row">
+            <span class="control-label">현재 환경맵</span>
+            <span class="control-value" id="currentHdriLabel" style="font-size:9px">Studio 기본</span>
+          </div>
+          <button class="btn btn-sm btn-block" style="margin-top:4px;margin-bottom:8px" onclick="resetToStudioHdri()">🔄 기본 Studio 환경맵 복원</button>
+          <div class="search-bar" style="margin-bottom:6px">
+            <input type="text" id="hdriSearch" placeholder="HDRI 검색..." oninput="filterHdriList()">
+          </div>
+          <div class="category-chips" id="hdriCategories" style="margin-bottom:6px">
+            <button class="chip active" onclick="setHdriCat(this,'')">전체</button>
+            <button class="chip" onclick="setHdriCat(this,'outdoor')">야외</button>
+            <button class="chip" onclick="setHdriCat(this,'indoor')">실내</button>
+            <button class="chip" onclick="setHdriCat(this,'studio')">스튜디오</button>
+            <button class="chip" onclick="setHdriCat(this,'night')">야간</button>
+          </div>
+          <div class="hdri-grid" id="hdriGrid">
+            <div style="grid-column:1/-1;text-align:center;padding:12px;color:var(--text-dim);font-size:11px">HDRI 목록 로딩중...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Export -->
       <div class="panel">
         <div class="panel-header">📸 내보내기</div>
@@ -797,7 +911,7 @@
   <div class="viewport" id="viewport">
     <div class="viewport-hint" id="viewportHint">
       <div class="hint-icon">🖱️</div>
-      <p>Sketchfab에서 모델을 검색하거나<br>파일을 업로드하세요</p>
+      <p>Sketchfab + Poly Haven에서 모델을 검색하거나<br>파일을 업로드하세요</p>
     </div>
     <!-- Capture boundary overlay -->
     <div class="capture-boundary" id="captureBoundary">
@@ -835,6 +949,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 // ═══════════════════════════════════════════════════
 // Three.js Setup
@@ -1032,6 +1147,16 @@ let searchCursors = { next: null, prev: null };
 let currentPage = 1;
 let currentQuery = '';
 let currentCredit = null;
+let sourceFilter = 'all'; // 'all' | 'sketchfab' | 'polyhaven'
+
+// Poly Haven state
+const PH_API = 'https://api.polyhaven.com';
+const PH_CDN = 'https://cdn.polyhaven.com';
+let phModelsCache = null;
+let phHdrisCache = null;
+let currentPhHdriSlug = null;
+let hdriCategoryFilter = '';
+let lastPhResults = []; // last Poly Haven search results for display
 
 // Restore token from localStorage
 const savedToken = localStorage.getItem('sketchfab_token');
@@ -1041,13 +1166,68 @@ if (savedToken) {
 }
 
 // ═══════════════════════════════════════════════════
+// Pre-load Poly Haven model list (runs on startup)
+// ═══════════════════════════════════════════════════
+async function initPolyHaven() {
+  try {
+    const resp = await fetch(`${PH_API}/assets?t=models`);
+    const data = await resp.json();
+    phModelsCache = Object.entries(data).map(([slug, info]) => ({
+      slug,
+      name: info.name || slug.replace(/_/g, ' '),
+      categories: info.categories || [],
+      tags: info.tags || [],
+      download_count: info.download_count || 0,
+    }));
+    phModelsCache.sort((a, b) => b.download_count - a.download_count);
+    console.log(`[Poly Haven] ${phModelsCache.length} models loaded`);
+  } catch (e) {
+    console.warn('[Poly Haven] Failed to load models:', e);
+    phModelsCache = [];
+  }
+  // Load HDRI list for settings
+  try {
+    const resp2 = await fetch(`${PH_API}/assets?t=hdris`);
+    const data2 = await resp2.json();
+    phHdrisCache = Object.entries(data2).map(([slug, info]) => ({
+      slug,
+      name: info.name || slug.replace(/_/g, ' '),
+      categories: info.categories || [],
+      tags: info.tags || [],
+      download_count: info.download_count || 0,
+    }));
+    phHdrisCache.sort((a, b) => b.download_count - a.download_count);
+    console.log(`[Poly Haven] ${phHdrisCache.length} HDRIs loaded`);
+    renderHdriGrid();
+  } catch (e) {
+    console.warn('[Poly Haven] Failed to load HDRIs:', e);
+    phHdrisCache = [];
+  }
+}
+initPolyHaven();
+
+// ═══════════════════════════════════════════════════
 // Tab Switching
 // ═══════════════════════════════════════════════════
 window.switchTab = function(tab) {
   document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
+  document.querySelectorAll('.sidebar-tab').forEach(t => {
+    if (t.getAttribute('onclick')?.includes(`'${tab}'`)) t.classList.add('active');
+  });
   document.getElementById('tab-' + tab).classList.add('active');
+};
+
+// ═══════════════════════════════════════════════════
+// Source Filter
+// ═══════════════════════════════════════════════════
+window.setSourceFilter = function(el, src) {
+  document.querySelectorAll('.source-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  sourceFilter = src;
+  // Re-trigger search if there's a query
+  const q = document.getElementById('searchQuery').value.trim();
+  if (q) unifiedSearch();
 };
 
 // ═══════════════════════════════════════════════════
@@ -1072,7 +1252,7 @@ function getToken() {
 
 window.quickSearch = function(q) {
   document.getElementById('searchQuery').value = q;
-  searchModels();
+  unifiedSearch();
 };
 
 // ═══════════════════════════════════════════════════
@@ -1181,7 +1361,10 @@ function hideTranslation() {
   document.getElementById('translateIndicator').style.display = 'none';
 }
 
-window.searchModels = async function(cursorUrl) {
+// ═══════════════════════════════════════════════════
+// Unified Search (Sketchfab + Poly Haven 동시 검색)
+// ═══════════════════════════════════════════════════
+window.unifiedSearch = async function(cursorUrl) {
   let q = document.getElementById('searchQuery').value.trim();
   if (!q && !cursorUrl) return;
 
@@ -1200,89 +1383,145 @@ window.searchModels = async function(cursorUrl) {
 
   currentQuery = searchQ;
 
-  resultsEl.innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto"></div><p style="margin-top:8px;color:var(--text-dim);font-size:12px">Sketchfab 검색중...</p></div>';
+  // ── Run both searches in parallel ──
+  const showSF = sourceFilter === 'all' || sourceFilter === 'sketchfab';
+  const showPH = sourceFilter === 'all' || sourceFilter === 'polyhaven';
 
-  const downloadable = document.getElementById('downloadableToggle').classList.contains('active');
+  let sfPromise = Promise.resolve({ results: [], next: null, previous: null });
+  let phResults = [];
 
-  let url;
-  if (cursorUrl) {
-    url = cursorUrl;
-  } else {
-    const params = new URLSearchParams({
-      type: 'models',
-      q: searchQ,
-      downloadable: downloadable,
-      count: 24,
-      sort_by: '-relevance'
-    });
-    url = `${SKETCHFAB_API}/search?${params}`;
-    currentPage = 1;
+  // Sketchfab search
+  if (showSF) {
+    resultsEl.innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto"></div><p style="margin-top:8px;color:var(--text-dim);font-size:12px">Sketchfab + Poly Haven 검색중...</p></div>';
+
+    const downloadable = document.getElementById('downloadableToggle').classList.contains('active');
+    let url;
+    if (cursorUrl) {
+      url = cursorUrl;
+    } else {
+      const params = new URLSearchParams({
+        type: 'models', q: searchQ, downloadable: downloadable, count: 24, sort_by: '-relevance'
+      });
+      url = `${SKETCHFAB_API}/search?${params}`;
+      currentPage = 1;
+    }
+    sfPromise = fetch(url).then(r => r.json()).catch(() => ({ results: [], next: null, previous: null }));
   }
 
-  try {
-    const resp = await fetch(url);
-    const data = await resp.json();
+  // Poly Haven local search
+  if (showPH && phModelsCache) {
+    const lq = searchQ.toLowerCase();
+    phResults = phModelsCache.filter(m => {
+      const s = `${m.name} ${m.slug} ${m.tags.join(' ')} ${m.categories.join(' ')}`.toLowerCase();
+      return lq.split(/\s+/).every(w => s.includes(w));
+    }).slice(0, 30); // top 30
+  }
 
-    searchCursors.next = data.next || null;
-    searchCursors.prev = data.previous || null;
+  const sfData = await sfPromise;
 
-    renderSearchResults(data.results || []);
+  searchCursors.next = sfData.next || null;
+  searchCursors.prev = sfData.previous || null;
+  lastPhResults = phResults;
 
-    // Pagination
-    const pagination = document.getElementById('pagination');
+  renderUnifiedResults(sfData.results || [], phResults, !cursorUrl);
+
+  // Pagination (Sketchfab only, Poly Haven shows all at once)
+  const pagination = document.getElementById('pagination');
+  if (showSF && (searchCursors.next || searchCursors.prev)) {
     pagination.style.display = 'flex';
     document.getElementById('prevBtn').disabled = !searchCursors.prev;
     document.getElementById('nextBtn').disabled = !searchCursors.next;
-    document.getElementById('pageInfo').textContent = `${currentPage} 페이지`;
-  } catch (err) {
-    resultsEl.innerHTML = `<div class="no-results">검색 오류: ${err.message}</div>`;
+    document.getElementById('pageInfo').textContent = `Sketchfab ${currentPage}p`;
+  } else {
+    pagination.style.display = 'none';
   }
 };
 
-function renderSearchResults(models) {
+// Keep old name as alias for pagination
+window.searchModels = window.unifiedSearch;
+
+function renderUnifiedResults(sfModels, phModels, isFirstPage) {
   const resultsEl = document.getElementById('searchResults');
-  if (!models.length) {
+  const showSF = sourceFilter === 'all' || sourceFilter === 'sketchfab';
+  const showPH = sourceFilter === 'all' || sourceFilter === 'polyhaven';
+
+  const hasSF = showSF && sfModels.length > 0;
+  const hasPH = showPH && phModels.length > 0;
+
+  if (!hasSF && !hasPH) {
     resultsEl.innerHTML = '<div class="no-results">검색 결과가 없습니다</div>';
     return;
   }
 
-  let html = '<div class="model-grid">';
-  models.forEach(m => {
-    const thumb = m.thumbnails?.images?.find(i => i.width >= 200)?.url || m.thumbnails?.images?.[0]?.url || '';
-    const faces = m.faceCount ? (m.faceCount > 1000000 ? (m.faceCount / 1000000).toFixed(1) + 'M' : (m.faceCount / 1000).toFixed(0) + 'K') : '?';
-    const license = m.license?.label || '';
-    const dlBadge = m.isDownloadable ? '<div class="model-card-badge">DL</div>' : '';
-    const licBadge = license ? `<div class="model-card-license">${license.replace('Creative Commons ', 'CC ')}</div>` : '';
+  let html = '';
 
-    html += `
-      <div class="model-card" onclick="selectModel('${m.uid}', this)" data-uid="${m.uid}">
-        ${dlBadge}${licBadge}
-        <img src="${thumb}" alt="${m.name}" loading="lazy">
-        <div class="model-card-info">
-          <div class="model-card-name" title="${m.name}">${m.name}</div>
-          <div class="model-card-meta">
-            <span>by ${m.user?.displayName || '?'}</span>
-            <span>${faces} faces</span>
+  // ── Poly Haven results (show first on first page only) ──
+  if (hasPH && isFirstPage) {
+    html += `<div class="results-section-header"><span style="color:var(--green)">🌿</span> Poly Haven <span style="font-size:9px;color:var(--green);font-weight:400">CC0 무료</span><span class="count">${phModels.length}개</span></div>`;
+    html += '<div class="model-grid">';
+    phModels.forEach(m => {
+      const thumb = `${PH_CDN}/asset_img/thumbs/${m.slug}.png?width=256&height=256`;
+      const cats = m.categories.slice(0, 2).join(', ');
+      html += `
+        <div class="model-card" onclick="loadPhModel('${m.slug}')" title="${m.name}" style="cursor:pointer">
+          <div class="source-badge polyhaven">Poly Haven</div>
+          <div class="model-card-badge" style="background:rgba(0,210,160,0.85);color:#000">CC0</div>
+          <img src="${thumb}" alt="${m.name}" loading="lazy" onerror="this.style.background='var(--surface2)'">
+          <div class="model-card-info">
+            <div class="model-card-name">${m.name}</div>
+            <div class="model-card-meta"><span>${cats || '-'}</span><span>↓ ${fmtCount(m.download_count)}</span></div>
           </div>
-        </div>
-      </div>
-    `;
-  });
-  html += '</div>';
+        </div>`;
+    });
+    html += '</div>';
+  }
+
+  // ── Sketchfab results ──
+  if (hasSF) {
+    if (hasPH && isFirstPage) {
+      html += `<div class="results-section-header" style="margin-top:10px"><span style="color:#1785c4">🔷</span> Sketchfab<span class="count">${currentPage}p</span></div>`;
+    }
+    html += '<div class="model-grid">';
+    sfModels.forEach(m => {
+      const thumb = m.thumbnails?.images?.find(i => i.width >= 200)?.url || m.thumbnails?.images?.[0]?.url || '';
+      const faces = m.faceCount ? (m.faceCount > 1000000 ? (m.faceCount / 1000000).toFixed(1) + 'M' : (m.faceCount / 1000).toFixed(0) + 'K') : '?';
+      const license = m.license?.label || '';
+      const dlBadge = m.isDownloadable ? '<div class="model-card-badge">DL</div>' : '';
+      const licBadge = license ? `<div class="model-card-license">${license.replace('Creative Commons ', 'CC ')}</div>` : '';
+      html += `
+        <div class="model-card" onclick="selectModel('${m.uid}', this)" data-uid="${m.uid}">
+          <div class="source-badge sketchfab">Sketchfab</div>
+          ${dlBadge}${licBadge}
+          <img src="${thumb}" alt="${m.name}" loading="lazy">
+          <div class="model-card-info">
+            <div class="model-card-name" title="${m.name}">${m.name}</div>
+            <div class="model-card-meta"><span>by ${m.user?.displayName || '?'}</span><span>${faces} faces</span></div>
+          </div>
+        </div>`;
+    });
+    html += '</div>';
+  }
+
   resultsEl.innerHTML = html;
+}
+
+function fmtCount(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return n.toString();
 }
 
 window.nextPage = function() {
   if (searchCursors.next) {
     currentPage++;
-    searchModels(searchCursors.next);
+    unifiedSearch(searchCursors.next);
   }
 };
 
 window.prevPage = function() {
   if (searchCursors.prev) {
     currentPage--;
-    searchModels(searchCursors.prev);
+    unifiedSearch(searchCursors.prev);
   }
 };
 
@@ -1882,6 +2121,230 @@ window.toggleGrid = function() {
   const toggle = document.getElementById('gridToggle');
   toggle.classList.toggle('active');
   gridHelper.visible = toggle.classList.contains('active');
+};
+
+// ═══════════════════════════════════════════════════
+// Poly Haven - Load 3D Model
+// ═══════════════════════════════════════════════════
+window.loadPhModel = async function(slug) {
+  showLoading('Poly Haven 모델 정보 가져오는 중...');
+
+  try {
+    const filesResp = await fetch(`${PH_API}/files/${slug}`);
+    const filesData = await filesResp.json();
+
+    const gltfData = filesData.gltf;
+    if (!gltfData) throw new Error('이 모델에 glTF 파일이 없습니다.');
+
+    // Pick resolution: 1k > 2k > first available
+    const resKey = gltfData['1k'] ? '1k' : gltfData['2k'] ? '2k' : Object.keys(gltfData)[0];
+    const resData = gltfData[resKey];
+    if (!resData?.gltf?.url) throw new Error('glTF 다운로드 URL을 찾을 수 없습니다.');
+
+    const gltfUrl = resData.gltf.url;
+    const gltfSize = resData.gltf.size || 0;
+    setLoadingText(`${resKey} glTF 다운로드중... (${(gltfSize/1024/1024).toFixed(1)}MB)`);
+    setProgress(10);
+
+    const include = resData.gltf.include || {};
+    const fileKeys = Object.keys(include);
+
+    if (fileKeys.length === 0 || gltfUrl.endsWith('.glb')) {
+      // Single GLB
+      setLoadingText('GLB 다운로드중...');
+      const glbResp = await fetch(gltfUrl);
+      const glbBuffer = await glbResp.arrayBuffer();
+      setProgress(80);
+      setLoadingText('모델 로딩중...');
+      loadGLTFFromData(glbBuffer, '', null);
+    } else {
+      // glTF + textures
+      setLoadingText(`파일 다운로드중 (${fileKeys.length + 1}개)...`);
+      const blobUrlMap = {};
+      let downloaded = 0;
+
+      const mainResp = await fetch(gltfUrl);
+      const mainText = await mainResp.text();
+      downloaded++;
+      setProgress(10 + (downloaded / (fileKeys.length + 1)) * 60);
+
+      for (const [relPath, fileInfo] of Object.entries(include)) {
+        if (!fileInfo?.url) continue;
+        try {
+          const resp = await fetch(fileInfo.url);
+          const blob = await resp.blob();
+          blobUrlMap[relPath] = URL.createObjectURL(blob);
+          const basename = relPath.split('/').pop();
+          if (basename && !blobUrlMap[basename]) blobUrlMap[basename] = blobUrlMap[relPath];
+        } catch (e) { console.warn('DL fail:', relPath, e); }
+        downloaded++;
+        setProgress(10 + (downloaded / (fileKeys.length + 1)) * 60);
+      }
+
+      setLoadingText('모델 렌더링중...');
+      setProgress(80);
+
+      let gltfJson;
+      try { gltfJson = JSON.parse(mainText); }
+      catch (e) {
+        // Might be GLB binary
+        const glbResp2 = await fetch(gltfUrl);
+        loadGLTFFromData(await glbResp2.arrayBuffer(), '', null);
+        setPhCredit(slug); return;
+      }
+
+      // Rewrite URIs
+      function resolvePhUri(uri) {
+        if (!uri || uri.startsWith('data:') || uri.startsWith('blob:')) return uri;
+        const decoded = decodeURIComponent(uri);
+        if (blobUrlMap[decoded]) return blobUrlMap[decoded];
+        if (blobUrlMap[uri]) return blobUrlMap[uri];
+        const stripped = decoded.replace(/^\.\//, '');
+        if (blobUrlMap[stripped]) return blobUrlMap[stripped];
+        const fn = decoded.split('/').pop();
+        if (blobUrlMap[fn]) return blobUrlMap[fn];
+        for (const [k, v] of Object.entries(blobUrlMap)) { if (k.toLowerCase().endsWith(fn.toLowerCase())) return v; }
+        return uri;
+      }
+      if (gltfJson.buffers) gltfJson.buffers.forEach(b => { if (b.uri) b.uri = resolvePhUri(b.uri); });
+      if (gltfJson.images) gltfJson.images.forEach(img => { if (img.uri) img.uri = resolvePhUri(img.uri); });
+
+      loadGLTFFromData(JSON.stringify(gltfJson), '', null);
+    }
+
+    setPhCredit(slug);
+  } catch (err) {
+    hideLoading();
+    console.error('Poly Haven model error:', err);
+    alert('Poly Haven 모델 로드 오류: ' + err.message);
+  }
+};
+
+function setPhCredit(slug) {
+  currentCredit = {
+    name: slug.replace(/_/g, ' '),
+    author: 'Poly Haven',
+    authorUrl: 'https://polyhaven.com',
+    modelUrl: `https://polyhaven.com/a/${slug}`,
+    license: 'CC0 (Public Domain)'
+  };
+  showCredit();
+}
+
+// ═══════════════════════════════════════════════════
+// Poly Haven - HDRI Environment Map
+// ═══════════════════════════════════════════════════
+window.loadPhHdri = async function(slug) {
+  showLoading('Poly Haven HDRI 로딩중...');
+
+  try {
+    const filesResp = await fetch(`${PH_API}/files/${slug}`);
+    const filesData = await filesResp.json();
+
+    const hdrData = filesData.hdri;
+    if (!hdrData) throw new Error('HDRI 파일이 없습니다.');
+
+    const resKey = hdrData['1k'] ? '1k' : hdrData['2k'] ? '2k' : Object.keys(hdrData)[0];
+    const resData = hdrData[resKey];
+
+    let hdrUrl = resData?.hdr?.url || resData?.exr?.url || null;
+    if (!hdrUrl) throw new Error('HDR/EXR 파일 없음');
+
+    setLoadingText(`${resKey} HDR 다운로드중...`);
+    setProgress(30);
+
+    new RGBELoader().load(hdrUrl, (texture) => {
+      setProgress(80);
+      setLoadingText('환경맵 적용중...');
+
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      const newEnvMap = pmremGenerator.fromEquirectangular(texture).texture;
+      scene.environment = newEnvMap;
+
+      if (currentModel) {
+        currentModel.traverse(child => {
+          if (child.isMesh) {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach(mat => {
+              if (mat && (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial)) {
+                mat.envMap = newEnvMap;
+                mat.needsUpdate = true;
+              }
+            });
+          }
+        });
+      }
+
+      texture.dispose();
+      currentPhHdriSlug = slug;
+      document.getElementById('currentHdriLabel').textContent = slug.replace(/_/g, ' ');
+      hideLoading();
+      renderHdriGrid(); // update active state
+    }, (progress) => {
+      if (progress.total > 0) setProgress(30 + (progress.loaded / progress.total) * 50);
+    }, (err) => {
+      hideLoading();
+      alert('HDRI 로드 실패: ' + err.message);
+    });
+
+  } catch (err) {
+    hideLoading();
+    alert('Poly Haven HDRI 오류: ' + err.message);
+  }
+};
+
+window.resetToStudioHdri = function() {
+  scene.environment = envMap;
+  if (currentModel) {
+    currentModel.traverse(child => {
+      if (child.isMesh) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(mat => {
+          if (mat && (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial)) {
+            mat.envMap = envMap; mat.needsUpdate = true;
+          }
+        });
+      }
+    });
+  }
+  currentPhHdriSlug = null;
+  document.getElementById('currentHdriLabel').textContent = 'Studio 기본';
+  renderHdriGrid();
+};
+
+// ═══════════════════════════════════════════════════
+// HDRI Grid (Settings tab)
+// ═══════════════════════════════════════════════════
+function renderHdriGrid() {
+  const grid = document.getElementById('hdriGrid');
+  if (!grid || !phHdrisCache) return;
+
+  const q = (document.getElementById('hdriSearch')?.value || '').toLowerCase();
+  let list = phHdrisCache;
+  if (hdriCategoryFilter) list = list.filter(h => h.categories.includes(hdriCategoryFilter));
+  if (q) list = list.filter(h => `${h.name} ${h.slug} ${h.tags.join(' ')}`.toLowerCase().includes(q));
+  list = list.slice(0, 40); // limit for performance
+
+  if (!list.length) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:12px;color:var(--text-dim);font-size:11px">결과 없음</div>'; return; }
+
+  grid.innerHTML = list.map(h => {
+    const active = currentPhHdriSlug === h.slug ? ' active' : '';
+    const thumb = `${PH_CDN}/asset_img/thumbs/${h.slug}.png?width=256&height=256`;
+    return `<div class="hdri-card${active}" onclick="loadPhHdri('${h.slug}')" title="${h.name}">
+      <div class="hdri-active-dot"></div>
+      <img src="${thumb}" alt="${h.name}" loading="lazy" onerror="this.style.background='var(--surface2)'">
+      <div class="hdri-card-name">${h.name}</div>
+    </div>`;
+  }).join('');
+}
+
+window.filterHdriList = function() { renderHdriGrid(); };
+
+window.setHdriCat = function(el, cat) {
+  document.querySelectorAll('#hdriCategories .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  hdriCategoryFilter = cat;
+  renderHdriGrid();
 };
 
 // ═══════════════════════════════════════════════════
