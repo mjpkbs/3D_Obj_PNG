@@ -959,7 +959,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 1000);
 camera.position.set(3, 3, 5);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(viewport.clientWidth, viewport.clientHeight);
 renderer.shadowMap.enabled = false;
@@ -2352,56 +2352,47 @@ window.setHdriCat = function(el, cat) {
 // so lighting/materials look identical to viewport
 // ═══════════════════════════════════════════════════
 function captureAtSize(w, h) {
-  // Use a WebGLRenderTarget on the SAME renderer
-  // This guarantees identical lighting, env maps, tone mapping, etc.
-  const renderTarget = new THREE.WebGLRenderTarget(w, h, {
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    format: THREE.RGBAFormat,
-    type: THREE.UnsignedByteType,
-    colorSpace: THREE.SRGBColorSpace
-  });
+  // ── Render to the DEFAULT framebuffer (same as viewport) ──
+  // This guarantees identical tone mapping, exposure, sRGB encoding.
+  // readRenderTargetPixels on WebGLRenderTarget skips the final
+  // output encoding step, causing brightness/color mismatch.
 
-  // Save current state
-  const prevTarget = renderer.getRenderTarget();
+  // 1. Save current state
   const prevPixelRatio = renderer.getPixelRatio();
+  const prevSize = new THREE.Vector2();
+  renderer.getSize(prevSize);
+  const prevBg = scene.background;
 
-  // Render to offscreen target at exact pixel dimensions
+  // If transparent, keep scene.background = null (alpha works on default FB too)
+
+  // 2. Resize renderer buffer to exact export dimensions
+  //    (updateStyle=false → CSS stays the same, no visual flash)
   renderer.setPixelRatio(1);
-  renderer.setRenderTarget(renderTarget);
+  renderer.setSize(w, h, false);
 
+  // 3. Camera with correct aspect
   const captureCamera = camera.clone();
   captureCamera.aspect = w / h;
   captureCamera.updateProjectionMatrix();
 
+  // 4. Render to screen canvas (applies tone mapping + sRGB correctly)
   renderer.render(scene, captureCamera);
 
-  // Read pixels
-  const pixels = new Uint8Array(w * h * 4);
-  renderer.readRenderTargetPixels(renderTarget, 0, 0, w, h, pixels);
+  // 5. Read from the renderer's own canvas
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = w;
+  outCanvas.height = h;
+  const ctx = outCanvas.getContext('2d');
+  ctx.drawImage(renderer.domElement, 0, 0, w, h);
 
-  // Restore state
-  renderer.setRenderTarget(prevTarget);
+  // 6. Restore original size & re-render
   renderer.setPixelRatio(prevPixelRatio);
-  renderTarget.dispose();
+  renderer.setSize(prevSize.x, prevSize.y, false);
+  camera.aspect = prevSize.x / prevSize.y;
+  camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
 
-  // Convert pixels to canvas (flip Y since WebGL is bottom-up)
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  const imageData = ctx.createImageData(w, h);
-
-  for (let y = 0; y < h; y++) {
-    const srcRow = (h - 1 - y) * w * 4; // flip Y
-    const dstRow = y * w * 4;
-    for (let x = 0; x < w * 4; x++) {
-      imageData.data[dstRow + x] = pixels[srcRow + x];
-    }
-  }
-  ctx.putImageData(imageData, 0, 0);
-
-  return canvas;
+  return outCanvas;
 }
 
 function downloadCanvas(canvas, filename) {
