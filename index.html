@@ -737,10 +737,20 @@
           </div>
           <input type="range" id="ambientIntensity" min="0" max="2" value="0.6" step="0.05" oninput="updateLighting()">
           <div class="control-row">
-            <span class="control-label">방향광</span>
+            <span class="control-label">방향광 강도</span>
             <span class="control-value" id="dirLightVal">1.50</span>
           </div>
           <input type="range" id="dirIntensity" min="0" max="4" value="1.5" step="0.05" oninput="updateLighting()">
+          <div class="control-row">
+            <span class="control-label">방향광 수평</span>
+            <span class="control-value" id="lightAzVal">35°</span>
+          </div>
+          <input type="range" id="lightAzimuth" min="0" max="360" value="35" step="1" oninput="updateLighting()">
+          <div class="control-row">
+            <span class="control-label">방향광 높이</span>
+            <span class="control-value" id="lightElVal">60°</span>
+          </div>
+          <input type="range" id="lightElevation" min="5" max="89" value="60" step="1" oninput="updateLighting()">
           <div class="control-row">
             <span class="control-label">환경맵 (PBR반사)</span>
             <span class="control-value" id="envVal">1.00</span>
@@ -755,6 +765,11 @@
             <span class="control-label">그림자</span>
             <div class="toggle" id="shadowToggle" onclick="toggleShadow()"></div>
           </div>
+          <div class="control-row">
+            <span class="control-label" style="font-size:10px">그림자 normalBias</span>
+            <span class="control-value" id="shadowBiasVal">0.05</span>
+          </div>
+          <input type="range" id="shadowNormalBias" min="0" max="0.2" value="0.05" step="0.005" oninput="updateLighting()">
           <div class="toggle-row">
             <span class="control-label">그리드</span>
             <div class="toggle active" id="gridToggle" onclick="toggleGrid()"></div>
@@ -959,11 +974,18 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-dirLight.position.set(5, 10, 7);
-// Shadow configuration - prevent shadow acne on smooth surfaces
-dirLight.shadow.mapSize.set(2048, 2048);
-dirLight.shadow.bias = -0.0005;
-dirLight.shadow.normalBias = 0.02;  // key fix: offsets along surface normal to prevent self-shadowing
+// Initial position: azimuth 35°, elevation 60°, distance 12
+const LIGHT_DIST = 12;
+dirLight.position.set(
+  LIGHT_DIST * Math.cos(THREE.MathUtils.degToRad(60)) * Math.sin(THREE.MathUtils.degToRad(35)),
+  LIGHT_DIST * Math.sin(THREE.MathUtils.degToRad(60)),
+  LIGHT_DIST * Math.cos(THREE.MathUtils.degToRad(60)) * Math.cos(THREE.MathUtils.degToRad(35))
+);
+// High-quality shadow for clean self-shadowing
+dirLight.shadow.mapSize.set(4096, 4096);
+dirLight.shadow.bias = 0;            // no depth bias - normalBias alone handles acne
+dirLight.shadow.normalBias = 0.05;   // offset along surface normal prevents self-shadow acne
+dirLight.shadow.radius = 2;          // soft shadow edges (PCFSoftShadowMap)
 dirLight.shadow.camera.near = 0.1;
 dirLight.shadow.camera.far = 50;
 dirLight.shadow.camera.left = -10;
@@ -1475,7 +1497,7 @@ function loadGLTFFromData(data, path, uid) {
     currentModel.traverse(child => {
       if (child.isMesh) {
         child.castShadow = true;
-        child.receiveShadow = false; // only ground receives shadows; self-shadowing causes acne
+        child.receiveShadow = true; // self-shadowing enabled; normalBias prevents acne
 
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach(mat => {
@@ -1680,7 +1702,7 @@ function loadGLBFromFile(file) {
 
   gltfLoader.load(url, (gltf) => {
     currentModel = gltf.scene;
-    currentModel.traverse(child => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = false; } });
+    currentModel.traverse(child => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
     scene.add(currentModel);
     centerAndScaleModel(currentModel);
     URL.revokeObjectURL(url);
@@ -1803,10 +1825,25 @@ window.updateLighting = function() {
   const dir = parseFloat(document.getElementById('dirIntensity').value);
   const env = parseFloat(document.getElementById('envIntensity').value);
   const exp = parseFloat(document.getElementById('exposureVal').value);
+  const lightAz = parseFloat(document.getElementById('lightAzimuth').value);
+  const lightEl = parseFloat(document.getElementById('lightElevation').value);
+  const nBias = parseFloat(document.getElementById('shadowNormalBias').value);
 
   ambientLight.intensity = amb;
   dirLight.intensity = dir;
   renderer.toneMappingExposure = exp;
+
+  // Update light direction from spherical coordinates
+  const azRad = THREE.MathUtils.degToRad(lightAz);
+  const elRad = THREE.MathUtils.degToRad(lightEl);
+  dirLight.position.set(
+    LIGHT_DIST * Math.cos(elRad) * Math.sin(azRad),
+    LIGHT_DIST * Math.sin(elRad),
+    LIGHT_DIST * Math.cos(elRad) * Math.cos(azRad)
+  );
+
+  // Update shadow normalBias in real-time
+  dirLight.shadow.normalBias = nBias;
 
   // Update environment map intensity on all materials
   if (currentModel) {
@@ -1824,8 +1861,11 @@ window.updateLighting = function() {
 
   document.getElementById('ambVal').textContent = amb.toFixed(2);
   document.getElementById('dirLightVal').textContent = dir.toFixed(2);
+  document.getElementById('lightAzVal').textContent = lightAz + '°';
+  document.getElementById('lightElVal').textContent = lightEl + '°';
   document.getElementById('envVal').textContent = env.toFixed(2);
   document.getElementById('expVal').textContent = exp.toFixed(2);
+  document.getElementById('shadowBiasVal').textContent = nBias.toFixed(3);
 };
 
 window.toggleShadow = function() {
